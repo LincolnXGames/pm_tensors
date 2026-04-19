@@ -1,13 +1,3 @@
-class TensorType extends Scratch.vm.jwArray.Type {
-  customId = "lxTensor";
-
-  array = []
-
-  constructor(array = [], safe = false) {
-    super(array, safe);
-  }
-}
-
 (function(Scratch) {
   'use strict';
 
