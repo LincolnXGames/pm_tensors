@@ -12,15 +12,7 @@
 
   const u = x => { if (x instanceof jwArray.Type) x = x.toJSON(); return x; };
 
-  class TensorType extends jwArray.Type {
-    customId = "lxTensor";
-
-    array = []
-
-    constructor(array = [], safe = false) {
-      super(array, safe);
-    }
-  }
+  let TensorType, lxTensor;
 
   // TODO: put these all in tensor class
 
@@ -156,7 +148,23 @@
     constructor() {
       if (!vm.jwArray) { vm.extensionManager.loadExtensionIdSync('jwArray'); }
       jwArray = vm.jwArray;
-      runtime.registerCompiledExtensionBlocks('lxTensors', Tensors.compileInfo);
+
+      TensorType = class extends vm.jwArray.Type {
+        customId = "lxTensor"
+
+        array = []
+
+        constructor(array = [], safe = false) {
+          super(array, safe);
+        }
+      }
+
+      lxTensor = {
+        Type: TensorType,
+      };
+
+      vm.lxTensor = lxTensor;
+      // runtime.registerCompiledExtensionBlocks('lxTensors', Tensors.compileInfo);
     }
 
     getInfo() {
@@ -168,7 +176,7 @@
         blocks: [
           {
             opcode: 'blank',
-            text: '(wip) blank tensor',
+            text: 'blank tensor',
             ...jwArray.Block
           },
           {
@@ -467,7 +475,7 @@
     // }
 
     blank() {
-      return new jwArray.Type([], true);
+      return new lxTensor.Type([], true);
     }
     tensorShape({ TEN }) {
       TEN = jwArray.Type.toArray(TEN);
