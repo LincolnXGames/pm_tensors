@@ -1,35 +1,55 @@
 (function(Scratch) {
   'use strict';
 
-  const vm = Scratch.vm
-  const runtime = vm.runtime
-  
-  let jwArray = {
-        Type: class { constructor(array) {/* noop */} static toArray(x) {/* noop */} },
-        Block: {},
-        Argument: {}
+  let arrayLimit = 2 ** 32 - 1;
+
+  function formatNumber(x) {
+      if (x >= 1e6) {
+          return x.toExponential(4);
+      } else {
+          x = Math.floor(x * 1000) / 1000;
+          return x.toFixed(Math.min(3, (String(x).split('.')[1] || '').length));
+      }
+  }
+
+  const escapeHTML = unsafe => {
+      return unsafe
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
   };
 
-  const u = x => { if (x instanceof jwArray.Type) x = x.toJSON(); return x; };
+  function clampIndex(x) {
+      return Math.min(Math.max(Math.floor(x), 0), arrayLimit);
+  }
 
-  let TensorType, lxTensor;
+  function span(text) {
+      let el = document.createElement('span')
+      el.innerHTML = text
+      el.style.display = 'hidden'
+      el.style.whiteSpace = 'nowrap'
+      el.style.width = '100%'
+      el.style.textAlign = 'center'
+      return el
+  }
+
+  function isObject(x) {
+      return x !== null && typeof x === "object" && [null, Object.prototype].includes(Object.getPrototypeOf(x));
+  }
+
+  const vm = Scratch.vm
+  const runtime = vm.runtime
+
+  const u = x =>
+    x instanceof jwArray.Type ? u(x.toJSON()) :
+    Array.isArray(x) ? x.map(u) :
+    x;
+
+  let TensorType, lxTensor, jwArray;
 
   // TODO: put these all in tensor class
-
-  // function getTensorShape(a) {
-  //   const s = [];
-  //   for (; Array.isArray(a); a = a[0]) {
-  //     const l = a.length;
-  //     if (!l) return [0];
-  //     s.push(l);
-  //     const f = a[0], t = Array.isArray(f);
-  //     for (let i = 1; i < l; i++) {
-  //       const x = a[i];
-  //       if (Array.isArray(x) !== t || (t && x.length !== f.length)) return [];
-  //     }
-  //   }
-  //   return s;
-  // }
 
   // function reshapeTensor(tensor, shape) {
   //   if (shape.some(el => typeof el !== 'number' || isNaN(el) || el <= 0)) return [];
@@ -53,11 +73,6 @@
   //   };
 
   //   return build(0);
-  // }
-
-  // function fillTensor(tensor, val) {
-  //   if (!Array.isArray(tensor)) return val;  
-  //   return tensor.map(el => fillTensor(el, val));
   // }
 
   // function setTensorPath(tensor, path, value) {
@@ -149,18 +164,88 @@
       if (!vm.jwArray) { vm.extensionManager.loadExtensionIdSync('jwArray'); }
       jwArray = vm.jwArray;
 
-      TensorType = class extends vm.jwArray.Type {
+      TensorType = class extends jwArray.Type {
         customId = "lxTensor"
-
-        array = []
 
         constructor(array = [], safe = false) {
           super(array, safe);
+        }
+
+        toReporterContent() {
+          let root = document.createElement('div')
+          root.style.display = 'flex'
+          root.style.flexDirection = 'column'
+          root.style.justifyContent = 'center'
+
+          let arrayDisplay = span(`[${this.array.slice(0, 50).map(v => TensorType.display(v)).join(', ')}]`)
+          arrayDisplay.style.overflow = "hidden"
+          arrayDisplay.style.whiteSpace = "nowrap"
+          arrayDisplay.style.textOverflow = "ellipsis"
+          arrayDisplay.style.maxWidth = "256px"
+          root.appendChild(arrayDisplay)
+
+          root.appendChild(span(`Length: ${this.array.length}`))
+          const shape = Array.isArray(this.shape) ? this.shape : [];
+          root.appendChild(span(`Shape: [${shape.join(', ')}]`));
+
+          return root
+        }
+
+        get shape() {
+          return TensorType.shape(this);
+        }
+
+        static shape(a) {
+          const s = [];
+          a = u(a);
+          for (; Array.isArray(a); a = u(a[0])) {
+            const l = a.length;
+            if (!l) return [0];
+            s.push(l);
+            const f = u(a[0]);
+            const t = Array.isArray(f);
+            for (let i = 1; i < l; i++) {
+              const x = u(a[i]);
+              if (Array.isArray(x) !== t || (t && x.length !== f.length)) return [];
+            }
+          }
+          return s;
+        }
+
+        static blankSize(shape) {
+          shape = u(shape);
+          let result = null;
+
+          for (let i = shape.length - 1; i >= 0; i--) {
+            result = Array.from({ length: shape[i] }, () => result && structuredClone(result));
+          }
+
+          return new TensorType(result, false);
+        }
+
+        fillTensor(val) {
+          const fill = (x) => {
+            x = u(x);
+            if (!Array.isArray(x)) return val;
+            return x.map(fill);
+          };
+          return new TensorType(fill(this), true);
         }
       }
 
       lxTensor = {
         Type: TensorType,
+        Block: {
+          blockType: Scratch.BlockType.REPORTER,
+          blockShape: Scratch.BlockShape.SQUARE,
+          outputCheck: ["Array", "Tensor"],
+          disableMonitor: true
+        },
+        Argument: {
+          shape: Scratch.BlockShape.SQUARE,
+          exemptFromNormalization: true,
+          check: ["Array"]
+        }
       };
 
       vm.lxTensor = lxTensor;
@@ -177,15 +262,15 @@
           {
             opcode: 'blank',
             text: 'blank tensor',
-            ...jwArray.Block
+            ...lxTensor.Block
           },
           {
             opcode: 'blankSize',
-            text: '(wip) blank tensor of shape [SHA]',
+            text: 'blank tensor of shape [SHA]',
             arguments: {
               SHA: {type: Scratch.ArgumentType.STRING, shape: Scratch.BlockShape.SQUARE, defaultValue: "[1, 2, 3]"},
             },
-            ...jwArray.Block
+            ...lxTensor.Block
           },
           '---',
           {
@@ -476,6 +561,10 @@
 
     blank() {
       return new lxTensor.Type([], true);
+    }
+    blankSize({ SHA }) {
+      SHA = jwArray.Type.toArray(SHA);
+      return lxTensor.Type.blankSize(SHA);
     }
     tensorShape({ TEN }) {
       TEN = jwArray.Type.toArray(TEN);
