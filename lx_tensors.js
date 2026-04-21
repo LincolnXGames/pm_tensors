@@ -167,8 +167,35 @@
       TensorType = class extends jwArray.Type {
         customId = "lxTensor"
 
-        constructor(array = [], safe = false) {
+        constructor(array = [], safe = false, shape) {
           super(array, safe);
+          this.array = safe ? array : array.map(v => {
+            if (v instanceof Array) return new TensorType([...v])
+            if (vm.dogeiscutObject && isObject(v)) return new vm.dogeiscutObject.Type({...v})
+            return v
+          })
+          this._shape = shape ?? TensorType.shape(array);
+        }
+
+        static toTensor(x, readOnly = false) {
+          if (x instanceof jwArray.Type) return readOnly ? x : new TensorType([...x.array], true)
+          if (x instanceof Array) return readOnly ? new TensorType(x) : new TensorType([...x])
+          if (x === "" || x === null || x === undefined) return new TensorType([], true)
+          if (typeof x == "object" && typeof x.toJSON == "function") {
+              let parsed = x.toJSON()
+              if (parsed instanceof Array) return new TensorType(parsed)
+              if (isObject(parsed)) return new TensorType(Object.values(parsed))
+              return new TensorType([parsed])
+          }
+          try {
+              let parsed = JSON.parse(x)
+              if (parsed instanceof Array) return new TensorType(parsed)
+          } catch {}
+          return new TensorType([x], true)
+        }
+
+        jwArrayHandler() {
+          return `Tensor<${formatNumber(this.array.length)}>`
         }
 
         toReporterContent() {
@@ -192,7 +219,10 @@
         }
 
         get shape() {
-          return TensorType.shape(this);
+          if (!Array.isArray(this._shape)) {
+            this._shape = TensorType.shape(this);
+          }
+          return this._shape;
         }
 
         static shape(a) {
@@ -220,7 +250,7 @@
             result = Array.from({ length: shape[i] }, () => result && structuredClone(result));
           }
 
-          return new TensorType(result, false);
+          return new TensorType(result, false, shape);
         }
 
         fillTensor(val) {
@@ -229,7 +259,36 @@
             if (!Array.isArray(x)) return val;
             return x.map(fill);
           };
-          return new TensorType(fill(this), true);
+          return lxTensor.Type.toTensor(fill(this), true, this._shape);
+        }
+
+        reshape(shape) {
+          shape = u(shape);
+          if (!Array.isArray(shape) || shape.some(n => n <= 0 || n !== n)) return new TensorType([], true);
+
+          let size = shape.reduce((a, b) => a * b, 1);
+
+          const flat = [];
+          (function f(x) {
+            x = u(x);
+            if (Array.isArray(x)) {
+              for (const v of x) {
+                if (flat.length < size) f(v);
+              }
+            } else {
+              if (flat.length < size) flat.push(x); //trunc
+            }
+          })(this);
+
+          while (flat.length < size) flat.push(null); // extend
+
+          let i = 0;
+          const build = d =>
+            Array.from({ length: shape[d] }, () =>
+              d === shape.length - 1 ? flat[i++] : build(d + 1)
+            );
+
+          return lxTensor.Type.toTensor(build(0), true, shape);
         }
       }
 
@@ -238,7 +297,7 @@
         Block: {
           blockType: Scratch.BlockType.REPORTER,
           blockShape: Scratch.BlockShape.SQUARE,
-          outputCheck: ["Array", "Tensor"],
+          forceOutputType: ["Array", "Tensor"],
           disableMonitor: true
         },
         Argument: {
@@ -269,6 +328,14 @@
             text: 'blank tensor of shape [SHA]',
             arguments: {
               SHA: {type: Scratch.ArgumentType.STRING, shape: Scratch.BlockShape.SQUARE, defaultValue: "[1, 2, 3]"},
+            },
+            ...lxTensor.Block
+          },
+          {
+            opcode: 'parse',
+            text: 'parse [STR] as tensor',
+            arguments: {
+              STR: {type: Scratch.ArgumentType.STRING, defaultValue: "[[1, 2], [3, 4]]"},
             },
             ...lxTensor.Block
           },
@@ -304,7 +371,7 @@
           },
           {
             opcode: 'tensorShape',
-            text: '(wip) shape of tensor [TEN]',
+            text: 'shape of tensor [TEN]',
             arguments: {
               TEN: jwArray.Argument
             },
@@ -312,7 +379,7 @@
           },
           {
             opcode: 'tensorRank',
-            text: '(wip) rank of tensor [TEN]',
+            text: 'rank of tensor [TEN]',
             blockType: Scratch.BlockType.REPORTER,
             arguments: {
               TEN: jwArray.Argument
@@ -320,7 +387,7 @@
           },
           {
             opcode: 'tensorScalars',
-            text: '(wip) size of tensor [TEN]',
+            text: 'size of tensor [TEN]',
             blockType: Scratch.BlockType.REPORTER,
             arguments: {
               TEN: jwArray.Argument
@@ -339,7 +406,7 @@
           },
           {
             opcode: 'tensorReshape',
-            text: '(wip) reshape tensor [TEN] to shape [SHA]',
+            text: 'reshape tensor [TEN] to shape [SHA]',
             arguments: {
               TEN: jwArray.Argument,
               SHA: {type: Scratch.ArgumentType.STRING, shape: Scratch.BlockShape.SQUARE, defaultValue: "[1, 2, 3]"},
@@ -348,7 +415,7 @@
           },
           {
             opcode: 'fill',
-            text: '(wip) fill tensor [TEN] with [VAL]',
+            text: 'fill tensor [TEN] with [VAL]',
             arguments: {
               TEN: jwArray.Argument,
               VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true, defaultValue: "foo"}
@@ -566,20 +633,23 @@
       SHA = jwArray.Type.toArray(SHA);
       return lxTensor.Type.blankSize(SHA);
     }
+    parse({ STR }) {
+      return lxTensor.Type.toTensor(STR);
+    }
     tensorShape({ TEN }) {
-      TEN = jwArray.Type.toArray(TEN);
+      TEN = lxTensor.Type.toTensor(TEN);
       if (TEN.array == null) return new jwArray.Type([], true);
-      return new jwArray.Type(getTensorShape(u(TEN)));
+      return new jwArray.Type(TEN.shape);
     }
     tensorRank({ TEN }) {
-      TEN = jwArray.Type.toArray(TEN);
-      if (TEN.array == null) return '';
-      return getTensorShape(u(TEN)).length;
+      TEN = lxTensor.Type.toTensor(TEN);
+      if (TEN.array == null) return 0;
+      return TEN.shape.length;
     }
     tensorScalars({ TEN }) {
-      TEN = jwArray.Type.toArray(TEN);
-      if (TEN.array == null) return '';
-      return getTensorShape(u(TEN)).reduce((a, b) => a*b, 1);
+      TEN = lxTensor.Type.toTensor(TEN);
+      if (TEN.array == null) return 0;
+      return TEN.shape.reduce((a, b) => a*b, 1);
     }
 
     tensorSetPath({ PAT, TEN, VAL }) {
@@ -589,15 +659,15 @@
       return setTensorPath(u(TEN), PAT.array, VAL)
     }
     tensorReshape({ TEN, SHA }) {
-      TEN = jwArray.Type.toArray(TEN);
+      TEN = lxTensor.Type.toTensor(TEN);
       SHA = jwArray.Type.toArray(SHA);
-      if (TEN.array == null || (Array.isArray(TEN.array) && TEN.array.length === 0)) return new jwArray.Type([], true);
-      return new jwArray.Type(reshapeTensor(u(TEN), SHA.array));
+      if (TEN.array == null || (Array.isArray(TEN.array) && TEN.array.length === 0)) return new lxTensor.Type([], true);
+      return lxTensor.Type.toTensor(TEN.reshape(SHA.array));
     }
     fill({ TEN, VAL }) {
-      TEN = jwArray.Type.toArray(TEN);
-      if (TEN.array == null || (Array.isArray(TEN.array) && TEN.array.length === 0)) return new jwArray.Type([], true);
-      return new jwArray.Type(fillTensor(u(TEN), VAL));
+      TEN = lxTensor.Type.toTensor(TEN);
+      if (TEN.array == null || (Array.isArray(TEN.array) && TEN.array.length === 0)) return new lxTensor.Type([], true);
+      return TEN.fillTensor(VAL)
     }
     transpose({ TEN }) {
       TEN = jwArray.Type.toArray(TEN);
