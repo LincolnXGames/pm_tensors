@@ -51,30 +51,6 @@
 
   // TODO: put these all in tensor class
 
-  // function reshapeTensor(tensor, shape) {
-  //   if (shape.some(el => typeof el !== 'number' || isNaN(el) || el <= 0)) return [];
-  //   const flat = tensor.flat(Infinity);
-
-  //   let size = 1;
-  //   for (let i = 0; i < shape.length; i++) size *= shape[i];
-
-  //   flat.length = size; // truncates or extends with empty slots
-  //   for (let i = 0; i < size; i++) if (flat[i] === undefined) flat[i] = null;
-
-  //   let idx = 0;
-  //   const build = d => {
-  //   const len = shape[d], arr = new Array(len);
-  //   if (d === shape.length - 1) {
-  //       for (let i = 0; i < len; i++) arr[i] = flat[idx++];
-  //     } else {
-  //       for (let i = 0; i < len; i++) arr[i] = build(d + 1);
-  //     }
-  //     return arr;
-  //   };
-
-  //   return build(0);
-  // }
-
   // function setTensorPath(tensor, path, value) {
   //   function f(a, d) {
   //     if (!Array.isArray(a)) return;
@@ -255,40 +231,76 @@
 
         fillTensor(val) {
           const fill = (x) => {
-            x = u(x);
-            if (!Array.isArray(x)) return val;
-            return x.map(fill);
+            if (Array.isArray(x)) {
+              for (let i = 0; i < x.length; i++) {
+                const el = x[i];
+
+                if (el instanceof TensorType) {
+                  fill(el.array); //inside tenosr clas 
+                } else if (Array.isArray(el)) {
+                  fill(el);
+                } else {
+                  x[i] = val;
+                }
+              }
+            }
           };
-          return lxTensor.Type.toTensor(fill(this), true, this._shape);
+
+          fill(this.array);
+          return this;
         }
 
         reshape(shape) {
           shape = u(shape);
-          if (!Array.isArray(shape) || shape.some(n => n <= 0 || n !== n)) return new TensorType([], true);
+          if (!Array.isArray(shape) || shape.some(n => n <= 0 || n !== n)) {
+            this.array = [];
+            this._shape = [];
+            return this;
+          }
 
-          let size = shape.reduce((a, b) => a * b, 1);
+          const size = shape.reduce((a, b) => a * b, 1);
 
           const flat = [];
-          (function f(x) {
+          const f = (x) => {
             x = u(x);
             if (Array.isArray(x)) {
-              for (const v of x) {
-                if (flat.length < size) f(v);
+              for (let i = 0; i < x.length && flat.length < size; i++) {
+                f(x[i]);
               }
-            } else {
-              if (flat.length < size) flat.push(x); //trunc
+            } else if (flat.length < size) { // trunc
+              flat.push(x);
             }
-          })(this);
+          };
+          f(this);
 
           while (flat.length < size) flat.push(null); // extend
 
-          let i = 0;
-          const build = d =>
-            Array.from({ length: shape[d] }, () =>
-              d === shape.length - 1 ? flat[i++] : build(d + 1)
-            );
+          let idx = 0;
 
-          return lxTensor.Type.toTensor(build(0), true, shape);
+          const build = (d) => {
+            const len = shape[d];
+
+            // leaf
+            if (d === shape.length - 1) {
+              const arr = new Array(len);
+              for (let i = 0; i < len; i++) arr[i] = flat[idx++];
+              return arr;
+            }
+
+            const subShape = shape.slice(d + 1);
+            const arr = new Array(len);
+
+            for (let i = 0; i < len; i++) {
+              arr[i] = new TensorType(build(d + 1), true, subShape);
+            }
+
+            return arr;
+          };
+
+          this.array = build(0);
+          this._shape = shape;
+
+          return this;
         }
       }
 
@@ -308,7 +320,7 @@
       };
 
       vm.lxTensor = lxTensor;
-      // runtime.registerCompiledExtensionBlocks('lxTensors', Tensors.compileInfo);
+      runtime.registerCompiledExtensionBlocks('lxTensors', Tensors.compileInfo);
     }
 
     getInfo() {
@@ -445,13 +457,13 @@
 
     // TODO: use a custom type blud
 
-    // static compileInfo = {
-    //   ir: {
-    //     blank(generator, block) {
-    //       return {
-    //         kind: 'input',
-    //       };
-    //     },
+    static compileInfo = {
+      ir: {
+        blank(generator, block) {
+          return {
+            kind: 'input',
+          };
+        },
     //     blankSize(generator, block) {
     //       return {
     //         kind: 'input',
@@ -495,15 +507,13 @@
     //         }
     //       };
     //     },
-    //   },
-    //   js: {
-    //     blank(node, compiler, imports) {
-    //       let source = '';
-    //       source += `(`
-    //       source += `new vm.jwArray.Type([], true)`
-    //       source += `)`
-    //       return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
-    //     },
+      },
+      js: {
+        blank(node, compiler, imports) {
+          let source = '';
+          source += `(new vm.lxTensor.Type([], true))`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
     //     blankSize(node, compiler, imports) {
     //       let source = '';
 
@@ -622,9 +632,9 @@
           
     //       source += compiler.script.yields ? `})())` : `})()`;
     //       return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
-    //     },
-    //   }
-    // }
+        // },
+      }
+    }
 
     blank() {
       return new lxTensor.Type([], true);
