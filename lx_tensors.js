@@ -4,39 +4,48 @@
   let arrayLimit = 2 ** 32 - 1;
 
   function formatNumber(x) {
-      if (x >= 1e6) {
-          return x.toExponential(4);
-      } else {
-          x = Math.floor(x * 1000) / 1000;
-          return x.toFixed(Math.min(3, (String(x).split('.')[1] || '').length));
-      }
+    if (x >= 1e6) {
+      return x.toExponential(4);
+    } else {
+      x = Math.floor(x * 1000) / 1000;
+      return x.toFixed(Math.min(3, (String(x).split('.')[1] || '').length));
+    }
   }
 
   const escapeHTML = unsafe => {
-      return unsafe
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#039;");
+    return unsafe
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
   };
 
   function clampIndex(x) {
-      return Math.min(Math.max(Math.floor(x), 0), arrayLimit);
+    return Math.min(Math.max(Math.floor(x), 0), arrayLimit);
   }
 
   function span(text) {
-      let el = document.createElement('span')
-      el.innerHTML = text
-      el.style.display = 'hidden'
-      el.style.whiteSpace = 'nowrap'
-      el.style.width = '100%'
-      el.style.textAlign = 'center'
-      return el
+    let el = document.createElement('span')
+    el.innerHTML = text
+    el.style.display = 'hidden'
+    el.style.whiteSpace = 'nowrap'
+    el.style.width = '100%'
+    el.style.textAlign = 'center'
+    return el
   }
 
   function isObject(x) {
-      return x !== null && typeof x === "object" && [null, Object.prototype].includes(Object.getPrototypeOf(x));
+    return x !== null && typeof x === "object" && [null, Object.prototype].includes(Object.getPrototypeOf(x));
+  }
+
+  function isPlainObject(value) {
+    if (typeof value !== 'object' || value === null) {
+      return false
+    }
+
+    const prototype = Object.getPrototypeOf(value)
+    return (prototype === null || prototype === Object.prototype || Object.getPrototypeOf(prototype) === null) && !(Symbol.toStringTag in value) && !(Symbol.iterator in value)
   }
 
   const vm = Scratch.vm
@@ -153,22 +162,193 @@
         }
 
         toReporterContent() {
+          return TensorType.tableDisplay(this);
+        }
+
+        toMonitorContent() {
+          return TensorType.tableDisplay(this, '1px solid #fff', '#ffffff33', 'ffffff00');
+        }
+
+        static tableDisplay(source, border = '1px solid #77777777', keyBackground = '#77777724', background = '#ffffff00', entryLimit = 1000) {
+          const ogSource = source;
+
           let root = document.createElement('div')
           root.style.display = 'flex'
           root.style.flexDirection = 'column'
-          root.style.justifyContent = 'center'
 
-          let arrayDisplay = span(`[${this.array.slice(0, 50).map(v => TensorType.display(v)).join(', ')}]`)
-          arrayDisplay.style.overflow = "hidden"
-          arrayDisplay.style.whiteSpace = "nowrap"
-          arrayDisplay.style.textOverflow = "ellipsis"
-          arrayDisplay.style.maxWidth = "256px"
-          root.appendChild(arrayDisplay)
+          const renderArray = (array, type = 'Array') => {
+            const table = document.createElement('table')
+            table.style.borderCollapse = 'collapse'
+            table.style.margin = '2px 0'
+            table.style.fontSize = '12px'
+            table.style.background = background
+            table.style.border = border
 
-          root.appendChild(span(`Length: ${this.array.length}`))
-          let shape = Array.isArray(this.shape) ? (this.shape.length === 0 ? '?' : this.shape) : [];
-          shape = Array.isArray(shape) ? `[${shape.slice(0, 50).map(v => TensorType.display(v)).join(', ')}]` : '?';
-          root.appendChild(span(`Shape: ${shape}`));
+            const limitedArray = array.slice(0, entryLimit)
+
+            if (limitedArray.length === 0) {
+              const text = span(`<i style="opacity: 0.75;">${escapeHTML(`<Blank ${type}>`)}</i>`)
+
+              return text.outerHTML
+            }
+
+            limitedArray.forEach((value, index) => {
+              const centeringDiv = document.createElement('div')
+              centeringDiv.style.display = 'flex'
+              centeringDiv.style.justifyContent = 'center'
+
+              const row = document.createElement('tr')
+
+              const valueCell = document.createElement('td')
+              valueCell.style.border = border
+              valueCell.style.padding = '2px 6px'
+              valueCell.style.background = background
+
+              centeringDiv.innerHTML = render(value, border, keyBackground, background, entryLimit)
+
+              valueCell.appendChild(centeringDiv)
+              row.appendChild(valueCell)
+              table.appendChild(row)
+            })
+
+            if (array.length > entryLimit) {
+              const moreRow = document.createElement('tr')
+              const moreCell = document.createElement('td')
+              moreCell.colSpan = 2
+              moreCell.textContent = `... ${array.length - entryLimit} more values`
+              moreCell.style.textAlign = 'center'
+              moreCell.style.fontStyle = 'italic'
+              moreCell.style.color = border
+              moreRow.appendChild(moreCell)
+              table.appendChild(moreRow)
+            }
+
+            return table.outerHTML
+          }
+
+          const renderMap = (map) => {
+            const table = document.createElement('table')
+            table.style.borderCollapse = 'collapse'
+            table.style.margin = '2px 0'
+            table.style.fontSize = '12px'
+            table.style.background = background
+            table.style.border = border
+
+            const limitedMap = new Map(Array.from(map).slice(0, entryLimit))
+
+            if (limitedMap.size === 0) {
+              const text = span(`<i style="opacity: 0.75;">${escapeHTML("<Blank Object>")}</i>`)
+
+              return text.outerHTML
+            }
+
+            limitedMap.forEach((value, key) => {
+              const keyCenteringDiv = document.createElement('div')
+              keyCenteringDiv.style.display = 'flex'
+              keyCenteringDiv.style.justifyContent = 'center'
+
+              const valueCenteringDiv = document.createElement('div')
+              valueCenteringDiv.style.display = 'flex'
+              valueCenteringDiv.style.justifyContent = 'center'
+
+              const row = document.createElement('tr')
+
+              const keyCell = document.createElement('td')
+              keyCell.style.border = border
+              keyCell.style.padding = '2px 6px'
+              keyCell.style.background = keyBackground
+              keyCell.style.fontWeight = 'bold';
+
+              keyCenteringDiv.innerHTML = renderKey(key)
+
+              const valueCell = document.createElement('td')
+              valueCell.style.border = border
+              valueCell.style.padding = '2px 6px'
+              valueCell.style.background = background
+
+              valueCenteringDiv.innerHTML = render(value, border, keyBackground, background)
+
+              keyCell.appendChild(keyCenteringDiv)
+              row.appendChild(keyCell)
+              valueCell.appendChild(valueCenteringDiv)
+              row.appendChild(valueCell)
+              table.appendChild(row)
+            })
+
+            if (map.size > entryLimit) {
+              const moreRow = document.createElement('tr')
+              const moreCell = document.createElement('td')
+              moreCell.colSpan = 2
+              moreCell.textContent = `... ${map.size - entryLimit} more entries`
+              moreCell.style.textAlign = 'center'
+              moreCell.style.fontStyle = 'italic'
+              moreCell.style.color = border
+              moreRow.appendChild(moreCell)
+              table.appendChild(moreRow)
+            }
+            
+            return table.outerHTML
+          }
+
+          const renderKey = (x) => {
+            if (typeof x === "symbol") {
+              return `<i style="opacity: 0.5;">${escapeHTML(x.description)}</i>`
+            }
+            return escapeHTML(String(x))
+          }
+
+          const render = (x) => {
+            try {
+              const nullDraw = '<i style="opacity: 0.75;">null</i>'
+              switch (typeof x) {
+                case "object":
+                  if (x === null || x === undefined) return nullDraw
+                  if (x instanceof Array) {
+                      return renderArray(x, ogSource instanceof TensorType ? 'Tensor' : 'Array')
+                  }
+                  if (x instanceof Map) {
+                      return renderMap(x)
+                  }
+                  if (typeof x.dogeiscutObjectHandler == "function") {
+                      return x.dogeiscutObjectHandler(x)
+                  }
+                  if (typeof x.jwArrayHandler == "function") {
+                      return x.jwArrayHandler(x)
+                  }
+                  return "Object"
+                case "undefined":
+                  return nullDraw
+                case "number":
+                  return formatNumber(x)
+                case "boolean":
+                  return x ? "true" : "false"
+                case "string":
+                  return `"${escapeHTML(Cast.toString(x))}"`
+                case "symbol":
+                  return `<i style="opacity: 0.5;">${escapeHTML(x.description)}</i>`
+              }
+            } catch {}
+            return "?"
+          }
+
+          const normalize = (input) => {
+            if (input instanceof jwArray.Type) {
+              return input.array.map(v => normalize(v))
+            }
+            if (vm.dogeiscutObject && input instanceof vm.dogeiscutObject.Type) {
+              return new Map(Array.from(input.map).map(([k, v]) => [vm.dogeiscutObject.Type.forKey(k), normalize(v)]))
+            }
+            if (isPlainObject(input)) {
+              return new Map(Object.entries(input).map(([k, v]) => [vm.dogeiscutObject.Type.forKey(k), normalize(v)]))
+            }
+            return input
+          }
+
+          source = normalize(source)
+
+          root.innerHTML = render(source, border, keyBackground, background)
+          root.appendChild(span(`Length: ${source.length}`))
+          root.appendChild(span(`Shape: [${ogSource.shape.join(', ')}]`))
 
           return root
         }
@@ -518,7 +698,7 @@
           '---',
           {
             opcode: 'tensorValid',
-            text: '(is [TEN] a valid tensor?',
+            text: 'is [TEN] a valid tensor?',
             blockType: Scratch.BlockType.BOOLEAN,
             arguments: {
               TEN: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true}
@@ -741,7 +921,6 @@
     }
     tensorScalars({ TEN }) {
       TEN = lxTensor.Type.toTensor(TEN);
-      if (TEN.array == null) return 0;
       return TEN.flat(Infinity).array.length;
     }
 
