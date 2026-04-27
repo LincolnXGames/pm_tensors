@@ -21,10 +21,6 @@
       .replaceAll("'", "&#039;");
   };
 
-  function clampIndex(x) {
-    return Math.min(Math.max(Math.floor(x), 0), arrayLimit);
-  }
-
   function span(text) {
     let el = document.createElement('span')
     el.innerHTML = text
@@ -57,70 +53,6 @@
     x;
 
   let TensorType, lxTensor, jwArray;
-
-  // TODO: put these all in tensor class
-
-  // function findTensorPath(t, target) {
-  // const stack = [[t, []]];
-
-  // while (stack.length) {
-  //   const [node, path] = stack.pop();
-
-  //   if (Array.isArray(node)) {
-  //     for (let i = node.length; i--;) {
-  //       stack.push([node[i], [...path, i]]);
-  //     }
-  //   } else if (node === target) {
-  //     return path.map(i => i + 1);
-  //   }
-  // }
-
-  // return [];
-  // }
-
-  // function tensorContains(tensor, target) {
-  //   if (Array.isArray(tensor)) {
-  //     for (let i = 0; i < tensor.length; i++) {
-  //       if (tensorContains(tensor[i], target)) return true;
-  //     }
-  //     return false;
-  //   }
-  //   return tensor === target;
-  // }
-
-  // function transposeTensor(t) {
-  //   const shape = getTensorShape(t);
-  //   if (!(Array.isArray(shape) && shape.length >= 1)) return [];
-  //   const r = shape.length;
-  //   if (r < 2) return t;
-
-  //   const ns = shape.slice().reverse();
-  //   const idx = new Array(r);
-
-  //   function build(d) {
-  //     const len = ns[d], out = new Array(len);
-
-  //     if (d === r - 1) {
-  //       for (let i = 0; i < len; i++) {
-  //         idx[d] = i;
-  //         let cur = t;
-  //         for (let k = 0; k < r; k++) {
-  //           cur = cur[idx[r - 1 - k]];
-  //         }
-  //         out[i] = cur;
-  //       }
-  //     } else {
-  //       for (let i = 0; i < len; i++) {
-  //         idx[d] = i;
-  //         out[i] = build(d + 1);
-  //       }
-  //     }
-
-  //     return out;
-  //   }
-
-  //   return build(0);
-  // }
   
   class Tensors {
     constructor() {
@@ -155,6 +87,11 @@
               if (parsed instanceof Array) return new TensorType(parsed)
           } catch {}
           return new TensorType([x], true)
+        }
+
+        static parseLength(x) {
+          if (u(x) instanceof Array) return u(x).map(TensorType.parseLength);
+          return Math.min(Math.max(Math.floor(x), 0), arrayLimit) || 0;
         }
 
         jwArrayHandler() {
@@ -323,7 +260,7 @@
                 case "boolean":
                   return x ? "true" : "false"
                 case "string":
-                  return `"${escapeHTML(Cast.toString(x))}"`
+                  return `"${escapeHTML(Scratch.Cast.toString(x))}"`
                 case "symbol":
                   return `<i style="opacity: 0.5;">${escapeHTML(x.description)}</i>`
               }
@@ -378,7 +315,7 @@
         }
 
         static blankSize(shape) {
-          shape = u(shape);
+          shape = TensorType.parseLength(shape);
           let result = null;
 
           for (let i = shape.length - 1; i >= 0; i--) {
@@ -389,7 +326,7 @@
         }
 
         static isEmpty(t) {
-          return t instanceof jwArray.Type && t.array.length === 0;
+          return !t instanceof jwArray.Type || t?.array?.length === 0;
         }
 
         fillTensor(val) {
@@ -415,7 +352,7 @@
         }
 
         reshape(shape) {
-          if (TensorType.isEmpty(this)) return this;
+          if (TensorType.isEmpty(this) || this.shape == shape) return this;
           shape = u(shape);
           if (!Array.isArray(shape) || shape.some(n => n <= 0 || n !== n)) {
             this.array = [];
@@ -551,9 +488,54 @@
         }
 
         flatHas(val) {
-          if (TensorType.isEmpty(this)) return this;
+          if (TensorType.isEmpty(this)) return false;
           val = u(val);
-          return this.flat(Infinity).some(el => u(el) === val);
+          return u(this.flat(Infinity)).includes(val);
+        }
+
+        transpose() {
+          if (TensorType.isEmpty(this)) return this;
+
+          const t = u(this);
+          const shape = this.shape;
+
+          if (!Array.isArray(shape) || shape.length < 2) return this;
+
+          const r = shape.length;
+          const newShape = shape.slice().reverse();
+          const idx = new Array(r);
+
+          const build = (d) => {
+            const len = newShape[d];
+            const out = new Array(len);
+
+            if (d === r - 1) {
+              for (let i = 0; i < len; i++) {
+                idx[d] = i;
+
+                let cur = t;
+                for (let k = 0; k < r; k++) {
+                  cur = cur[idx[r - 1 - k]];
+                }
+
+                out[i] = cur;
+              }
+            } else {
+              for (let i = 0; i < len; i++) {
+                idx[d] = i;
+                out[i] = build(d + 1);
+              }
+            }
+
+            return out;
+          };
+
+          const result = build(0);
+
+          this.array = result;
+          this._shape = newShape;
+
+          return this;
         }
       }
 
@@ -606,7 +588,7 @@
           },
           '---',
           {
-            opcode: 'tensorGetPath',
+            opcode: 'getPath',
             text: 'get path [PAT] in tensor [TEN]',
             blockType: Scratch.BlockType.REPORTER,
             allowDropAnywhere: true,
@@ -616,34 +598,34 @@
             },
           },
           {
-            opcode: 'tensorFindPath',
+            opcode: 'findPath',
             text: 'path of [VAL] in tensor [TEN]',
             allowDropAnywhere: true,
             arguments: {
               VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true, defaultValue: "foo"},
               TEN: jwArray.Argument
             },
-            ...jwArray.Block
+            ...lxTensor.Block
           },
           {
-            opcode: 'tensorHas',
-            text: '(wip) tensor [TEN] has [VAL]',
+            opcode: 'has',
+            text: 'tensor [TEN] has [VAL]',
             blockType: Scratch.BlockType.BOOLEAN,
             arguments: {
               TEN: jwArray.Argument,
-              VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true},
+              VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true, defaultValue: "foo"},
             },
           },
           {
-            opcode: 'tensorShape',
+            opcode: 'shape',
             text: 'shape of tensor [TEN]',
             arguments: {
               TEN: jwArray.Argument
             },
-            ...jwArray.Block
+            ...lxTensor.Block
           },
           {
-            opcode: 'tensorRank',
+            opcode: 'rank',
             text: 'rank of tensor [TEN]',
             blockType: Scratch.BlockType.REPORTER,
             arguments: {
@@ -651,7 +633,7 @@
             },
           },
           {
-            opcode: 'tensorScalars',
+            opcode: 'scalars',
             text: 'size of tensor [TEN]',
             blockType: Scratch.BlockType.REPORTER,
             arguments: {
@@ -660,23 +642,23 @@
           },
           '---',
           {
-            opcode: 'tensorSetPath',
+            opcode: 'setPath',
             text: 'set path [PAT] in tensor [TEN] to [VAL]',
             arguments: {
               PAT: {type: Scratch.ArgumentType.STRING, shape: Scratch.BlockShape.SQUARE, defaultValue: "[1, 2, 3]"},
               TEN: jwArray.Argument,
               VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true, defaultValue: "foo"}
             },
-            ...jwArray.Block
+            ...lxTensor.Block
           },
           {
-            opcode: 'tensorReshape',
+            opcode: 'reshape',
             text: 'reshape tensor [TEN] to shape [SHA]',
             arguments: {
               TEN: jwArray.Argument,
               SHA: {type: Scratch.ArgumentType.STRING, shape: Scratch.BlockShape.SQUARE, defaultValue: "[1, 2, 3]"},
             },
-            ...jwArray.Block
+            ...lxTensor.Block
           },
           {
             opcode: 'fill',
@@ -685,19 +667,67 @@
               TEN: jwArray.Argument,
               VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true, defaultValue: "foo"}
             },
-            ...jwArray.Block
+            ...lxTensor.Block
           },
           {
             opcode: 'transpose',
-            text: '(wip) transpose tensor [TEN]',
+            text: 'transpose tensor [TEN]',
             arguments: {
               TEN: jwArray.Argument
             },
-            ...jwArray.Block
+            ...lxTensor.Block
           },
           '---',
           {
-            opcode: 'tensorValid',
+            opcode: 'mapP',
+            text: 'path',
+            blockType: Scratch.BlockType.REPORTER,
+            hideFromPalette: true,
+            canDragDuplicate: true
+          },
+          {
+            opcode: 'mapV',
+            text: 'value',
+            blockType: Scratch.BlockType.REPORTER,
+            hideFromPalette: true,
+            allowDropAnywhere: true,
+            canDragDuplicate: true
+          },
+          {
+            opcode: 'mapV2',
+            text: 'value2',
+            blockType: Scratch.BlockType.REPORTER,
+            hideFromPalette: true,
+            allowDropAnywhere: true,
+            canDragDuplicate: true
+          },
+          {
+            opcode: 'map',
+            text: 'map [TEN] [P] [V] = [VAL]',
+            arguments: {
+              TEN: jwArray.Argument,
+              P: {fillIn: 'mapP'},
+              V: {fillIn: 'mapV'},
+              VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true, defaultValue: "foo"}
+            },
+            ...lxTensor.Block
+          },
+          {
+            opcode: 'combine',
+            text: 'combine [TEN] with [TEN2] [P] [V] [V2] = [VAL]',
+            arguments: {
+              TEN: jwArray.Argument,
+              TEN2: jwArray.Argument,
+              P: {fillIn: 'mapP'},
+              V: {fillIn: 'mapV'},
+              V2: {fillIn: 'mapV2'},
+              VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true, defaultValue: "foo"}
+            },
+            ...lxTensor.Block
+          },
+          '---',
+          {
+            opcode: 'valid',
             text: 'is [TEN] a valid tensor?',
             blockType: Scratch.BlockType.BOOLEAN,
             arguments: {
@@ -712,180 +742,161 @@
 
     static compileInfo = {
       ir: {
-        blank(generator, block) {
+        blank: (generator, block) => {
           return {
             kind: 'input',
           };
         },
-    //     blankSize(generator, block) {
-    //       return {
-    //         kind: 'input',
-    //         args: {
-    //           SHA: generator.descendInputOfBlock(block, 'SHA'),
-    //         }
-    //       };
-    //     },
-    //     tensorGetPath(generator, block) {
-    //       return {
-    //         kind: 'input',
-    //         args: {
-    //           PAT: generator.descendInputOfBlock(block, 'PAT'),
-    //           TEN: generator.descendInputOfBlock(block, 'TEN'),
-    //         }
-    //       };
-    //     },
-    //     tensorFindPath(generator, block) {
-    //       return {
-    //         kind: 'input',
-    //         args: {
-    //           VAL: generator.descendInputOfBlock(block, 'VAL'),
-    //           TEN: generator.descendInputOfBlock(block, 'TEN'),
-    //         }
-    //       };
-    //     },
-    //     tensorHas(generator, block) {
-    //       return {
-    //         kind: 'input',
-    //         args: {
-    //           VAL: generator.descendInputOfBlock(block, 'VAL'),
-    //           TEN: generator.descendInputOfBlock(block, 'TEN'),
-    //         }
-    //       };
-    //     },
-    //     tensorShape(generator, block) {
-    //       return {
-    //         kind: 'input',
-    //         args: {
-    //           TEN: generator.descendInputOfBlock(block, 'TEN'),
-    //         }
-    //       };
-    //     },
+        blankSize: (generator, block) => {
+          return {
+            kind: 'input',
+            shape: generator.descendInputOfBlock(block, 'SHA'),
+          };
+        },
+        mapP: (generator, block) => {
+          return {
+            kind: 'input',
+          };
+        },
+        mapV: (generator, block) => {
+          return {
+            kind: 'input',
+          };
+        },
+        mapV2: (generator, block) => {
+          return {
+            kind: 'input',
+          };
+        },
+        map: (generator, block) => {
+          generator.script.yields = true;
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+            value: generator.descendInputOfBlock(block, 'VAL'),
+          };
+        },
+        combine: (generator, block) => {
+          generator.script.yields = true;
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+            tensor2: generator.descendInputOfBlock(block, 'TEN2'),
+            value: generator.descendInputOfBlock(block, 'VAL'),
+          };
+        },
       },
       js: {
-        blank(node, compiler, imports) {
+        blank: (node, compiler, imports) => {
           let source = '';
           source += `(new vm.lxTensor.Type([], true))`;
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
-    //     blankSize(node, compiler, imports) {
-    //       let source = '';
+        blankSize: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.blankSize(vm.jwArray.Type.toArray(${compiler.descendInput(node.shape).asUnknown()})))`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        mapP: (node, compiler, imports) => {
+          let source = '(typeof thread._lxTensorPath !== "undefined" ? vm.jwArray.Type.toArray(thread._lxTensorPath) : new vm.jwArray.Type([], true))';
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        mapV: (node, compiler, imports) => {
+          let source = '(typeof thread._lxTensorValue !== "undefined" ? thread._lxTensorValue : null)';
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        mapV2: (node, compiler, imports) => {
+          let source = '(typeof thread._lxTensorValue2 !== "undefined" ? thread._lxTensorValue2 : null)';
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        map: (node, compiler, imports) => {
+          let source = "";
 
-    //       source += compiler.script.yields ? `(yield* (function*(){` : `(function(){`;
+          source += `vm.lxTensor.Type.toTensor(yield* (function*() {\n`;
 
-    //       let dims = compiler.localVariables.next();
-    //       let result = compiler.localVariables.next();
-    //       source += `let ${dims} = vm.jwArray.Type.toArray(${compiler.descendInput(node.args.SHA).asUnknown()}, true).toJSON();`;
-    //       source += `let ${result} = null;`;
+          // input tensor
+          const array = compiler.localVariables.next();
+          source += `const ${array} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).toJSON();\n`;
 
-    //       let i = compiler.localVariables.next();
-    //       source += `for (let ${i} = ${dims}.length - 1; ${i} >= 0; ${i}--) {`
-    //       source += `${result} = Array.from({ length: ${dims}[${i}] }, () => ${result} && structuredClone(${result}));`
-    //       source += `}`
+          // result tensor
+          const result = compiler.localVariables.next();
+          source += `const ${result} = structuredClone(${array});\n`;
 
-    //       source += `return vm.jwArray.Type.toArray(${result});`;
+          // path stack (IMPORTANT)
+          source += `thread._lxTensorPath ??= [];\n`;
 
-    //       source += compiler.script.yields ? `})())` : `})()`; // no semicolon
+          // recursive walker
+          const walk = compiler.localVariables.next();
 
-    //       return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
-    //     },
-    //     tensorGetPath(node, compiler, imports) {
-    //       let source = '';
+          const arr = compiler.localVariables.next();
+          const depth = compiler.localVariables.next();
+          const i = compiler.localVariables.next();
+          source += `
+          const ${walk} = function*(${arr}, ${depth}) {
+            for (let ${i} = 0; ${i} < ${arr}.length; ${i}++) {
 
-    //       source += compiler.script.yields ? `(yield* (function*(){` : `(function(){`;
+              thread._lxTensorPath[${depth}] = ${i} + 1;
 
-    //       let path = compiler.localVariables.next();
-    //       let current = compiler.localVariables.next();
-          
-    //       source += `let ${current} = vm.jwArray.Type.toArray(${compiler.descendInput(node.args.TEN).asUnknown()}, true).toJSON();`
-    //       source += `let ${path} = vm.jwArray.Type.toArray(${compiler.descendInput(node.args.PAT).asUnknown()}, true).toJSON();`
-  
-    //       let i = compiler.localVariables.next();
-    //       let len = compiler.localVariables.next();
-    //       source += `for (let ${i} = 0, ${len} = ${path}.length; ${i} < ${len}; ${i}++) {`
-    //       source += `if (!Array.isArray(${current})) return '';`
-    //       source += `${current} = ${current}[${path}[${i}]-1];`
-    //       source += `if (${current} === undefined) return '';`
-    //       source += `}`
+              if (Array.isArray(${arr}[${i}])) {
+                yield* ${walk}(${arr}[${i}], ${depth} + 1);
+              } else {
+                thread._lxTensorValue = ${arr}[${i}];
+                ${arr}[${i}] = ${compiler.descendInput(node.value).asUnknown()};
+              }
+            }
+          };`;
 
-    //       source += `return Array.isArray(${current}) ? vm.jwArray.Type.toArray(${current}) : ${current};`;
+          source += `yield* ${walk}(${result}, 0);\n`;
 
-    //       source += compiler.script.yields ? `})())` : `})()`;
+          // cleanup path
+          source += `thread._lxTensorPath.length = 0;\n`;
 
-    //       return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
-    //     },
-    //     tensorFindPath(node, compiler, imports) {
-    //       let source = '';
+          source += `return ${result};\n`;
 
-    //       source += compiler.script.yields ? `(yield* (function*(){` : `(function(){`;
+          source += `}()), true)\n`;
 
-    //       let t = compiler.localVariables.next();
-    //       let target = compiler.localVariables.next();
-          
-    //       source += `let ${t} = vm.jwArray.Type.toArray(${compiler.descendInput(node.args.TEN).asUnknown()}, true).toJSON();`
-    //       source += `let ${target} = ${compiler.descendInput(node.args.VAL).asUnknown()};`
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        combine: (node, compiler, imports) => {
+          let source = "";
 
-    //       let stack = compiler.localVariables.next();
-    //       let nod = compiler.localVariables.next();
-    //       let path = compiler.localVariables.next();
+          source += `vm.lxTensor.Type.toTensor(yield* (function*() {\n`;
 
-    //       source += `const ${stack} = [[${t}, []]];`
+          // tensor 1 (flattened)
+          const array1 = compiler.localVariables.next();
+          source += `const ${array1} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).toJSON().flat(Infinity);\n`;
 
-    //       source += `while (${stack}.length) {`
-    //       source += `const [${nod}, ${path}] = ${stack}.pop();`
+          // tensor 2 (reshaped + flattened)
+          const array2 = compiler.localVariables.next();
+          source += `const ${array2} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor2).asUnknown()}, true).toJSON().flat(Infinity);\n`;
 
-    //       let i = compiler.localVariables.next();
-    //       source += `if (Array.isArray(${nod})) {`
-    //       source += `for (let ${i} = ${nod}.length; ${i}--;) {`
-    //       source += `${stack}.push([${nod}[${i}], [...${path}, ${i}]]);`
-    //       source += `}`
-    //       source += `} else if (${nod} === ${target}) {`
-    //       source += `return vm.jwArray.Type.toArray(${path}.map(${i} => ${i} + 1));`
-    //       source += `}`
-    //       source += `}`
+          // result (flat first)
+          const result = compiler.localVariables.next();
+          source += `const ${result} = new Array(${array1}.length);\n`;
 
-    //       source += `return new vm.jwArray.Type([], true);`
+          // loop index
+          const i = compiler.localVariables.next();
 
-    //       source += compiler.script.yields ? `})())` : `})()`;
+          source += `for (let ${i} = 0; ${i} < ${array1}.length; ${i}++) {\n`;
 
-    //       return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
-    //     },
-    //     tensorHas(node, compiler, imports) {
-    //       let source = '';
-    //       source += `(`
-    //       source += `vm.jwArray.Type.toArray(${compiler.descendInput(node.args.TEN).asUnknown()}, true).flat(Infinity).toJSON().includes(${compiler.descendInput(node.args.VAL).asUnknown()})`
-    //       source += `)`
-    //       return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
-    //     },
-    //     tensorShape(node, compiler, imports) {
-    //       let source = '';
-    //       source += compiler.script.yields ? `(yield* (function*(){` : `(function(){`;
+          // expose scalar values
+          source += `thread._lxTensorValue = ${array1}[${i}];\n`;
+          source += `thread._lxTensorValue2 = ${array2}[${i}];\n`;
 
-    //       let ten = compiler.localVariables.next();
-    //       source += `let ${a} = vm.jwArray.Type.toArray(${compiler.descendInput(node.args.TEN).asUnknown()}, true).toJSON();`
+          // compute value
+          source += `${result}[${i}] = ${compiler.descendInput(node.value).asUnknown()};\n`;
 
-    //       let shape = compiler.localVariables.next();
-    //       let length = compiler.localVariables.next();
-    //       let first = compiler.localVariables.next();
-    //       let type = compiler.localVariables.next();
-    //       let idx = compiler.localVariables.next();
-    //       let elem = compiler.localVariables.next();
+          source += `}\n`;
 
-    //       source += `const ${shape} = [];`
-    //       source += `for (; Array.isArray(${ten}); ${ten} = ${ten}[0]) {`
-    //       source += `  const ${length} = ${ten}.length;`
-    //       source += `  if (!${length}) return [0];`
-    //       source += `  ${shape}.push(${length});`
-    //       source += `  const ${first} = ${ten}[0], ${type} = Array.isArray(${first});`
-    //       source += `  for (let ${idx} = 1; ${idx} < ${length}; ${idx}++) {`
-    //       source += `    const ${elem} = ${ten}[${idx}];`
-    //       source += `    if (Array.isArray(${elem}) !== ${type} || (t && ${elem}.length !== ${first}.length)) return [];`
-    //       source += `  }`
-    //       source += `}`
-    //       source += `return ${shape};`
-          
-    //       source += compiler.script.yields ? `})())` : `})()`;
-    //       return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
-        // },
+          // reshape back to original tensor shape
+          const shapeTensor = compiler.localVariables.next();
+          source += `const ${shapeTensor} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).shape;\n`;
+          source += `return vm.lxTensor.Type.toTensor(${result}).reshape(${shapeTensor});\n`;
+
+          source += `}()), true)\n`;
+
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
       }
     }
 
@@ -900,36 +911,40 @@
       return lxTensor.Type.toTensor(STR);
     }
 
-    tensorGetPath({ PAT, TEN }) {
+    getPath({ PAT, TEN }) {
       TEN = lxTensor.Type.toTensor(TEN);
       PAT = jwArray.Type.toArray(PAT);
       const res = TEN.getPath(PAT);
       return (res === undefined) ? '' : res;
     }
-    tensorFindPath({ VAL, TEN }) {
+    findPath({ VAL, TEN }) {
       TEN = lxTensor.Type.toTensor(TEN);
       return TEN.findPath(VAL);
     }
-    tensorShape({ TEN }) {
+    has({ TEN, VAL }) {
+      TEN = lxTensor.Type.toTensor(TEN);
+      return TEN.flatHas(VAL);
+    }
+    shape({ TEN }) {
       TEN = lxTensor.Type.toTensor(TEN);
       return new jwArray.Type(TEN.shape);
     }
-    tensorRank({ TEN }) {
+    rank({ TEN }) {
       TEN = lxTensor.Type.toTensor(TEN);
       if (TEN.array == null) return 0;
       return TEN.shape.length;
     }
-    tensorScalars({ TEN }) {
+    scalars({ TEN }) {
       TEN = lxTensor.Type.toTensor(TEN);
       return TEN.flat(Infinity).array.length;
     }
 
-    tensorSetPath({ PAT, TEN, VAL }) {
+    setPath({ PAT, TEN, VAL }) {
       TEN = lxTensor.Type.toTensor(TEN);
       PAT = jwArray.Type.toArray(PAT);
       return TEN.setPath(PAT, VAL);
     }
-    tensorReshape({ TEN, SHA }) {
+    reshape({ TEN, SHA }) {
       TEN = lxTensor.Type.toTensor(TEN);
       SHA = jwArray.Type.toArray(SHA);
       return TEN.reshape(SHA.array);
@@ -940,10 +955,10 @@
     }
     transpose({ TEN }) {
       TEN = lxTensor.Type.toTensor(TEN);
-      return new jwArray.Type(transposeTensor(u(TEN)));
+      return TEN.transpose();
     }
 
-    tensorValid({ TEN }) {
+    valid({ TEN }) {
       if (TEN == "" || TEN == null) return false;
       TEN = lxTensor.Type.toTensor(TEN);
       return TEN.shape.length > 0 && TEN.array.length > 0;
