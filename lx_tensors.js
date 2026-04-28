@@ -810,90 +810,79 @@
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
         map: (node, compiler, imports) => {
-          let source = "";
+          let source = '';
+          source += `vm.lxTensor.Type.toTensor(yield* (function*() {`;
 
-          source += `vm.lxTensor.Type.toTensor(yield* (function*() {\n`;
-
-          // input tensor
           const array = compiler.localVariables.next();
-          source += `const ${array} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).toJSON();\n`;
-
-          // result tensor
+          source += `const ${array} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).toJSON();`;
           const result = compiler.localVariables.next();
-          source += `const ${result} = structuredClone(${array});\n`;
+          source += `const ${result} = structuredClone(${array});`;
+          source += `thread._lxTensorPath ??= [];`;
 
-          // path stack (IMPORTANT)
-          source += `thread._lxTensorPath ??= [];\n`;
-
-          // recursive walker
           const walk = compiler.localVariables.next();
-
           const arr = compiler.localVariables.next();
           const depth = compiler.localVariables.next();
           const i = compiler.localVariables.next();
-          source += `
-          const ${walk} = function*(${arr}, ${depth}) {
-            for (let ${i} = 0; ${i} < ${arr}.length; ${i}++) {
+          source += `const ${walk} = function*(${arr}, ${depth}) {`;
+          source += `for (let ${i} = 0; ${i} < ${arr}.length; ${i}++) {`;
 
-              thread._lxTensorPath[${depth}] = ${i} + 1;
+          source += `thread._lxTensorPath[${depth}] = ${i} + 1;`;
 
-              if (Array.isArray(${arr}[${i}])) {
-                yield* ${walk}(${arr}[${i}], ${depth} + 1);
-              } else {
-                thread._lxTensorValue = ${arr}[${i}];
-                ${arr}[${i}] = ${compiler.descendInput(node.value).asUnknown()};
-              }
-            }
-          };`;
+          source += `if (Array.isArray(${arr}[${i}])) {`;
+          source += `yield* ${walk}(${arr}[${i}], ${depth} + 1);`;
+          source += `} else {`;
+          source += `thread._lxTensorValue = ${arr}[${i}];`;
+          source += `${arr}[${i}] = ${compiler.descendInput(node.value).asUnknown()};`;
+          source += `}}};`;
 
-          source += `yield* ${walk}(${result}, 0);\n`;
-
-          // cleanup path
-          source += `thread._lxTensorPath.length = 0;\n`;
-
-          source += `return ${result};\n`;
-
-          source += `}()), true)\n`;
+          source += `yield* ${walk}(${result}, 0);`;
+          source += `delete thread._lxTensorPath;`;
+          source += `return ${result};`;
+          source += `}()), true)`;
 
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
         combine: (node, compiler, imports) => {
-          let source = "";
+          let source = '';
+          source += `vm.lxTensor.Type.toTensor(yield* (function*() {`;
 
-          source += `vm.lxTensor.Type.toTensor(yield* (function*() {\n`;
-
-          // tensor 1 (flattened)
           const array1 = compiler.localVariables.next();
-          source += `const ${array1} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).toJSON().flat(Infinity);\n`;
-
-          // tensor 2 (reshaped + flattened)
+          source += `const ${array1} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).toJSON();`;
           const array2 = compiler.localVariables.next();
-          source += `const ${array2} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor2).asUnknown()}, true).toJSON().flat(Infinity);\n`;
-
-          // result (flat first)
+          source += `const ${array2} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor2).asUnknown()}, true).toJSON().flat(Infinity);`;
           const result = compiler.localVariables.next();
-          source += `const ${result} = new Array(${array1}.length);\n`;
+          source += `const ${result} = structuredClone(${array1});`;
+          source += `thread._lxTensorPath ??= [];`;
 
-          // loop index
+          const idx = compiler.localVariables.next();
+          source += `let ${idx} = 0;`;
+
+          const walk = compiler.localVariables.next();
+          const arr = compiler.localVariables.next();
+          const depth = compiler.localVariables.next();
           const i = compiler.localVariables.next();
+          source += `const ${walk} = function*(${arr}, ${depth}) {`;
+          source += `for (let ${i} = 0; ${i} < ${arr}.length; ${i}++) {`;
 
-          source += `for (let ${i} = 0; ${i} < ${array1}.length; ${i}++) {\n`;
+          source += `thread._lxTensorPath[${depth}] = ${i} + 1;`;
 
-          // expose scalar values
-          source += `thread._lxTensorValue = ${array1}[${i}];\n`;
-          source += `thread._lxTensorValue2 = ${array2}[${i}];\n`;
+          source += `if (Array.isArray(${arr}[${i}])) {`;
+          source += `yield* ${walk}(${arr}[${i}], ${depth} + 1);`;
+          source += `} else {`;
 
-          // compute value
-          source += `${result}[${i}] = ${compiler.descendInput(node.value).asUnknown()};\n`;
+          source += `thread._lxTensorValue = ${arr}[${i}];`;
+          source += `thread._lxTensorValue2 = (${idx} < ${array2}.length) ? ${array2}[${idx}] : null;`;
 
-          source += `}\n`;
+          source += `${arr}[${i}] = ${compiler.descendInput(node.value).asUnknown()};`;
+          source += `${idx}++;`;
+          source += `}}};`;
 
-          // reshape back to original tensor shape
-          const shapeTensor = compiler.localVariables.next();
-          source += `const ${shapeTensor} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).shape;\n`;
-          source += `return vm.lxTensor.Type.toTensor(${result}).reshape(${shapeTensor});\n`;
-
-          source += `}()), true)\n`;
+          source += `yield* ${walk}(${result}, 0);`;
+          source += `delete thread._lxTensorPath;`;
+          source += `delete thread._lxTensorValue;`;
+          source += `delete thread._lxTensorValue2;`;
+          source += `return ${result};`;
+          source += `}()), true)`;
 
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
