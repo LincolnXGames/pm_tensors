@@ -447,8 +447,6 @@
             node = node[i];
           }
 
-          if (node instanceof TensorType) return node.array;
-
           return node;
         }
 
@@ -766,6 +764,66 @@
             tensor: generator.descendInputOfBlock(block, 'TEN'),
           };
         },
+        findPath: (generator, block) => {
+          return {
+            kind: 'input',
+            value: generator.descendInputOfBlock(block, 'VAL'),
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+          };
+        },
+        has: (generator, block) => {
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+            value: generator.descendInputOfBlock(block, 'VAL'),
+          };
+        },
+        shape: (generator, block) => {
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+          };
+        },
+        rank: (generator, block) => {
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+          };
+        },
+        scalars: (generator, block) => {
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+          };
+        },
+        setPath: (generator, block) => {
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+            path: generator.descendInputOfBlock(block, 'PAT'),
+            value: generator.descendInputOfBlock(block, 'VAL'),
+          };
+        },
+        reshape: (generator, block) => {
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+            shape: generator.descendInputOfBlock(block, 'SHA'),
+          };
+        },
+        fill: (generator, block) => {
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+            value: generator.descendInputOfBlock(block, 'VAL'),
+          };
+        },
+        transpose: (generator, block) => {
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+          };
+        },
         mapP: (generator, block) => {
           return {
             kind: 'input',
@@ -798,6 +856,12 @@
             value: generator.descendInputOfBlock(block, 'VAL'),
           };
         },
+        rectangular: (generator, block) => {
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+          };
+        },
       },
       js: {
         blank: (node, compiler, imports) => {
@@ -817,13 +881,52 @@
         },
         getPath: (node, compiler, imports) => {
           let source = '';
-          source += compiler.script.yields ? `(yield* (function*(){` : `(function(){`;
-
-          const result = compiler.localVariables.next();
-          source += `const ${result} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).getPath(${compiler.descendInput(node.path).asUnknown()});`;
-          source += `return ${result} ?? '';`;
-
-          source += compiler.script.yields ? `})())` : `})()`;
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).getPath(vm.jwArray.Type.toArray(${compiler.descendInput(node.path).asUnknown()})) ?? '');`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        findPath: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).findPath(${compiler.descendInput(node.value).asUnknown()}))`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        has: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).flatHas(${compiler.descendInput(node.value).asUnknown()}))`;
+          return new imports.TypedInput(source, imports.TYPE_BOOLEAN);
+        },
+        shape: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.jwArray.Type.toArray(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).shape))`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        rank: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).shape.length)`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        scalars: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).flat(Infinity).array.length)`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        setPath: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).setPath(vm.jwArray.Type.toArray(${compiler.descendInput(node.path).asUnknown()}),${compiler.descendInput(node.value).asUnknown()}))`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        reshape: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).reshape(vm.jwArray.Type.toArray(${compiler.descendInput(node.shape).asUnknown()})))`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        fill: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).fillTensor(${compiler.descendInput(node.value).asUnknown()}))`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        transpose: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).transpose())`;
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
         mapP: (node, compiler, imports) => {
@@ -915,70 +1018,12 @@
 
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
+        rectangular: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).shape.length > 0 && vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).array.length > 0)`;
+          return new imports.TypedInput(source, imports.TYPE_BOOLEAN);
+        },
       }
-    }
-
-    blank() {
-      return new lxTensor.Type([], true);
-    }
-    blankSize({ SHA }) {
-      SHA = jwArray.Type.toArray(SHA);
-      return lxTensor.Type.blankSize(SHA);
-    }
-    parse({ STR }) {
-      return lxTensor.Type.toTensor(STR);
-    }
-
-    getPath({ PAT, TEN }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      PAT = jwArray.Type.toArray(PAT);
-      const res = TEN.getPath(PAT);
-      return (res === undefined) ? '' : res;
-    }
-    findPath({ VAL, TEN }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      return TEN.findPath(VAL);
-    }
-    has({ TEN, VAL }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      return TEN.flatHas(VAL);
-    }
-    shape({ TEN }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      return new jwArray.Type(TEN.shape);
-    }
-    rank({ TEN }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      if (TEN.array == null) return 0;
-      return TEN.shape.length;
-    }
-    scalars({ TEN }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      return TEN.flat(Infinity).array.length;
-    }
-
-    setPath({ PAT, TEN, VAL }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      PAT = jwArray.Type.toArray(PAT);
-      return TEN.setPath(PAT, VAL);
-    }
-    reshape({ TEN, SHA }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      SHA = jwArray.Type.toArray(SHA);
-      return TEN.reshape(SHA.array);
-    }
-    fill({ TEN, VAL }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      return TEN.fillTensor(VAL)
-    }
-    transpose({ TEN }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      return TEN.transpose();
-    }
-
-    rectangular({ TEN }) {
-      TEN = lxTensor.Type.toTensor(TEN);
-      return TEN.shape.length > 0 && TEN.array.length > 0;
     }
   }
   
