@@ -1020,7 +1020,13 @@
         },
         rectangular: (node, compiler, imports) => {
           let source = '';
-          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).shape.length > 0 && vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).array.length > 0)`;
+          source += compiler.script.yields ? `(yield* (function*(){` : `(function(){`
+
+          const result = compiler.localVariables.next();
+          source += `let ${result} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()});`;
+          source += `return ${result}.shape.length > 0 && ${result}.array.length > 0;`;
+
+          source += compiler.script.yields ? `})())` : `})()`;
           return new imports.TypedInput(source, imports.TYPE_BOOLEAN);
         },
       }
