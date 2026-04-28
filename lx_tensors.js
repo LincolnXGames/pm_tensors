@@ -753,6 +753,19 @@
             shape: generator.descendInputOfBlock(block, 'SHA'),
           };
         },
+        parse: (generator, block) => {
+          return {
+            kind: 'input',
+            string: generator.descendInputOfBlock(block, 'STR'),
+          };
+        },
+        getPath: (generator, block) => {
+          return {
+            kind: 'input',
+            path: generator.descendInputOfBlock(block, 'PAT'),
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+          };
+        },
         mapP: (generator, block) => {
           return {
             kind: 'input',
@@ -795,6 +808,22 @@
         blankSize: (node, compiler, imports) => {
           let source = '';
           source += `(vm.lxTensor.Type.blankSize(vm.jwArray.Type.toArray(${compiler.descendInput(node.shape).asUnknown()})))`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        parse: (node, compiler, imports) => {
+          let source = '';
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.string).asUnknown()}))`;
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        getPath: (node, compiler, imports) => {
+          let source = '';
+          source += compiler.script.yields ? `(yield* (function*(){` : `(function(){`;
+
+          const result = compiler.localVariables.next();
+          source += `const ${result} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).getPath(${compiler.descendInput(node.path).asUnknown()});`;
+          source += `return ${result} ?? '';`;
+
+          source += compiler.script.yields ? `})())` : `})()`;
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
         mapP: (node, compiler, imports) => {
