@@ -727,11 +727,11 @@
           },
           '---',
           {
-            opcode: 'valid',
-            text: 'is [TEN] a valid tensor?',
+            opcode: 'rectangular',
+            text: 'is [TEN] rectangular?',
             blockType: Scratch.BlockType.BOOLEAN,
             arguments: {
-              TEN: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true}
+              TEN: jwArray.Argument,
             },
           },
         ],
@@ -947,8 +947,7 @@
       return TEN.transpose();
     }
 
-    valid({ TEN }) {
-      if (TEN == "" || TEN == null) return false;
+    rectangular({ TEN }) {
       TEN = lxTensor.Type.toTensor(TEN);
       return TEN.shape.length > 0 && TEN.array.length > 0;
     }
