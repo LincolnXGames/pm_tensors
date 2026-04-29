@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 332 218"
+   width="332"
+   height="218"
+   version="1.1"
+   id="svg1"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:bx="https://boxy-svg.com">
+  <defs
+     id="defs1">
+    <bx:export>
+      <bx:file
+         format="png"
+         width="600"
+         height="372" />
+    </bx:export>
+  </defs>
+  <rect
+     width="300"
+     height="186"
+     style="fill:#fe6743;fill-opacity:1;stroke:#cd3b2c;stroke-width:32px"
+     id="rect1"
+     x="16"
+     y="16" />
+  <g
+     transform="matrix(7.9117548,0,0,7.9117548,94.790137,37.794237)"
+     id="g1">
+    <path
+       d="m 7.7711639,3.22 h -1.926 c -1.064,0 -1.927,0.863 -1.927,1.927 v 7.706 c 0,1.066 0.863,1.927 1.927,1.927 h 1.926 v -1.927 h -1.926 V 5.147 h 1.926 z m 2.4576721,9.633 h 1.926 V 5.147 h -1.926 V 3.22 h 1.926 c 1.064,0 1.927,0.863 1.927,1.927 v 7.706 c 0,1.066 -0.863,1.927 -1.927,1.927 h -1.926 z"
+       fill="#ffffff"
+       id="path1" />
+    <path
+       d="M 2.4185737,3.22 H 0.49257365 c -1.064,0 -1.92699995,0.863 -1.92699995,1.927 v 7.706 c 0,1.066 0.86299995,1.927 1.92699995,1.927 H 2.4185737 V 12.853 H 0.49257365 V 5.147 H 2.4185737 Z m 13.1628523,9.633 h 1.926 V 5.147 h -1.926 V 3.22 h 1.926 c 1.064,0 1.927,0.863 1.927,1.927 v 7.706 c 0,1.066 -0.863,1.927 -1.927,1.927 h -1.926 z"
+       fill="#ffffff"
+       id="path2" />
+  </g>
+</svg>

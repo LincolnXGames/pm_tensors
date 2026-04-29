@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 400 400"
+   version="1.1"
+   id="svg2"
+   width="400"
+   height="400"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs2" />
+  <circle
+     cx="10"
+     cy="10"
+     r="9"
+     style="fill:#fe6743;fill-opacity:1;fill-rule:nonzero;stroke:#cd3b2c;stroke-width:2px;paint-order:stroke"
+     id="circle1" />
+  <path
+     d="M 7.727,6.842 A 1.31,1.31 0 0 0 6.422,8.146 v 3.708 c 0,0.716 0.59,1.304 1.305,1.304 H 9.03 V 11.475 H 8.103 V 8.525 H 9.03 V 6.842 Z m 3.242,0 v 1.683 h 0.927 v 2.95 h -0.927 v 1.683 h 1.304 a 1.31,1.31 0 0 0 1.305,-1.304 V 8.146 A 1.31,1.31 0 0 0 12.273,6.842 Z"
+     style="baseline-shift:baseline;display:inline;overflow:visible;opacity:1;vector-effect:none;fill:#ffffff;stop-color:#000000;stop-opacity:1"
+     id="path1" />
+  <path
+     fill="#ffffff"
+     d="M 7.238,4.22 H 5.312 A 1.927,1.927 0 0 0 3.385,6.147 v 7.706 c 0,1.066 0.863,1.927 1.927,1.927 H 7.238 V 13.853 H 5.312 V 6.147 h 1.926 z m 5.524,9.633 h 1.926 V 6.147 H 12.762 V 4.22 h 1.926 c 1.064,0 1.927,0.863 1.927,1.927 v 7.706 a 1.926,1.926 0 0 1 -1.927,1.927 h -1.926 z"
+     id="path2" />
+</svg>
