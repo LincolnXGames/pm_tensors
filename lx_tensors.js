@@ -679,9 +679,9 @@
           {
             opcode: 'mapP',
             text: 'path',
-            blockType: Scratch.BlockType.REPORTER,
             hideFromPalette: true,
-            canDragDuplicate: true
+            canDragDuplicate: true,
+            ...lxTensor.Block
           },
           {
             opcode: 'mapV',
@@ -700,6 +700,14 @@
             canDragDuplicate: true
           },
           {
+            opcode: 'accum',
+            text: 'accumulator',
+            blockType: Scratch.BlockType.REPORTER,
+            hideFromPalette: true,
+            allowDropAnywhere: true,
+            canDragDuplicate: true
+          },
+          {
             opcode: 'forEach',
             text: 'for [P] [V] of [TEN]',
             blockType: Scratch.BlockType.LOOP,
@@ -711,7 +719,7 @@
           },
           {
             opcode: 'map',
-            text: 'map [TEN] [P] [V] = [VAL]',
+            text: 'map [TEN] [P] [V] → [VAL]',
             arguments: {
               TEN: jwArray.Argument,
               P: {fillIn: 'mapP'},
@@ -722,7 +730,7 @@
           },
           {
             opcode: 'combine',
-            text: 'combine [TEN] with [TEN2] [P] [V] [V2] = [VAL]',
+            text: 'combine [TEN] with [TEN2] [P] [V] [V2] → [VAL]',
             arguments: {
               TEN: jwArray.Argument,
               TEN2: jwArray.Argument,
@@ -730,6 +738,19 @@
               V: {fillIn: 'mapV'},
               V2: {fillIn: 'mapV2'},
               VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true, defaultValue: "foo"}
+            },
+            ...lxTensor.Block
+          },
+          {
+            opcode: 'reduce',
+            text: 'reduce [TEN] starting at [S] [P] [V] [A] → [VAL]',
+            arguments: {
+              TEN: jwArray.Argument,
+              S: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true, defaultValue: "0"},
+              P: {fillIn: 'mapP'},
+              V: {fillIn: 'mapV'},
+              A: {fillIn: 'accum'},
+              VAL: {type: Scratch.ArgumentType.STRING, exemptFromNormalization: true}
             },
             ...lxTensor.Block
           },
@@ -849,6 +870,11 @@
             kind: 'input',
           };
         },
+        accum: (generator, block) => {
+          return {
+            kind: 'input',
+          };
+        },
         forEach: (generator, block) => {
           generator.script.yields = true;
           return {
@@ -872,6 +898,15 @@
             tensor: generator.descendInputOfBlock(block, 'TEN'),
             tensor2: generator.descendInputOfBlock(block, 'TEN2'),
             value: generator.descendInputOfBlock(block, 'VAL'),
+          };
+        },
+        reduce: (generator, block) => {
+          generator.script.yields = true;
+          return {
+            kind: 'input',
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+            value: generator.descendInputOfBlock(block, 'VAL'),
+            start: generator.descendInputOfBlock(block, 'S'),
           };
         },
         rectangular: (generator, block) => {
@@ -957,6 +992,10 @@
         },
         mapV2: (node, compiler, imports) => {
           let source = '(typeof thread._lxTensorValue2 !== "undefined" ? thread._lxTensorValue2 : null)';
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        accum: (node, compiler, imports) => {
+          let source = '(typeof thread._lxTensorAcc !== "undefined" ? thread._lxTensorAcc : null)';
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
         forEach: (node, compiler, imports) => {
@@ -1059,6 +1098,52 @@
           source += `delete thread._lxTensorValue2;`;
           source += `return ${result};`;
           source += `}()), true)`;
+
+          return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        reduce: (node, compiler, imports) => {
+          let source = '';
+          source += `yield* (function*() {`;
+
+          const array = compiler.localVariables.next();
+          source += `const ${array} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}, true).toJSON();`;
+
+          const acc = compiler.localVariables.next();
+          source += `let ${acc} = ${compiler.descendInput(node.start).asUnknown()};`;
+
+          source += `thread._lxTensorPath ??= [];`;
+
+          const walk = compiler.localVariables.next();
+          const arr = compiler.localVariables.next();
+          const depth = compiler.localVariables.next();
+          const i = compiler.localVariables.next();
+
+          source += `const ${walk} = function*(${arr}, ${depth}) {`;
+          source += `for (let ${i} = 0; ${i} < ${arr}.length; ${i}++) {`;
+
+          source += `thread._lxTensorPath[${depth}] = ${i} + 1;`;
+
+          source += `if (Array.isArray(${arr}[${i}])) {`;
+          source += `yield* ${walk}(${arr}[${i}], ${depth} + 1);`;
+          source += `} else {`;
+
+          // expose values
+          source += `thread._lxTensorValue = ${arr}[${i}];`;
+          source += `thread._lxTensorAcc = ${acc};`;
+
+          // compute new accumulator
+          source += `${acc} = ${compiler.descendInput(node.value).asUnknown()};`;
+
+          source += `}}};`;
+
+          source += `yield* ${walk}(${array}, 0);`;
+
+          source += `delete thread._lxTensorPath;`;
+          source += `delete thread._lxTensorValue;`;
+          source += `delete thread._lxTensorAcc;`;
+
+          source += `return ${acc};`;
+          source += `}())`;
 
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
