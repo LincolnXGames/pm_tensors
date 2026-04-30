@@ -530,7 +530,7 @@
 
           const result = build(0);
 
-          this.array = result;
+          this.array = TensorType.toTensor(result).array;
           this._shape = newShape;
 
           return this;
@@ -881,7 +881,7 @@
         },
         getPath: (node, compiler, imports) => {
           let source = '';
-          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).getPath(vm.jwArray.Type.toArray(${compiler.descendInput(node.path).asUnknown()})) ?? '');`;
+          source += `(vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()}).getPath(vm.jwArray.Type.toArray(${compiler.descendInput(node.path).asUnknown()})) ?? '')`;
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
         },
         findPath: (node, compiler, imports) => {
