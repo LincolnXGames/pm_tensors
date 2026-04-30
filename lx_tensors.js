@@ -700,6 +700,16 @@
             canDragDuplicate: true
           },
           {
+            opcode: 'forEach',
+            text: 'for [P] [V] of [TEN]',
+            blockType: Scratch.BlockType.LOOP,
+            arguments: {
+              TEN: jwArray.Argument,
+              P: {fillIn: 'mapP'},
+              V: {fillIn: 'mapV'},
+            },
+          },
+          {
             opcode: 'map',
             text: 'map [TEN] [P] [V] = [VAL]',
             arguments: {
@@ -839,6 +849,14 @@
             kind: 'input',
           };
         },
+        forEach: (generator, block) => {
+          generator.script.yields = true;
+          return {
+            kind: 'stack',
+            substack: generator.descendSubstack(block, 'SUBSTACK'),
+            tensor: generator.descendInputOfBlock(block, 'TEN'),
+          };
+        },
         map: (generator, block) => {
           generator.script.yields = true;
           return {
@@ -940,6 +958,32 @@
         mapV2: (node, compiler, imports) => {
           let source = '(typeof thread._lxTensorValue2 !== "undefined" ? thread._lxTensorValue2 : null)';
           return new imports.TypedInput(source, imports.TYPE_UNKNOWN);
+        },
+        forEach: (node, compiler, imports) => {
+          const tensor = compiler.localVariables.next();
+          compiler.source += `let ${tensor} = vm.lxTensor.Type.toTensor(${compiler.descendInput(node.tensor).asUnknown()});\n`;
+
+          const walk = compiler.localVariables.next();
+          const arr = compiler.localVariables.next();
+          const depth = compiler.localVariables.next();
+          const i = compiler.localVariables.next();
+          compiler.source += `const ${walk} = function*(${arr}, ${depth}) {`;
+          compiler.source += `for (let ${i} = 0; ${i} < ${arr}.length; ${i}++) {`;
+
+          compiler.source += `thread._lxTensorPath[${depth}] = ${i} + 1;`;
+
+          compiler.source += `if (Array.isArray(${arr}[${i}])) {`;
+          compiler.source += `yield* ${walk}(${arr}[${i}], ${depth} + 1);`;
+          compiler.source += `} else {`;
+          compiler.source += `thread._lxTensorValue = ${arr}[${i}];`;
+          compiler.descendStack(node.substack, new imports.Frame(true, undefined, true));
+          compiler.yieldLoop()
+          compiler.source += `}}};`;
+
+          compiler.source += `thread._lxTensorPath ??= [];`;
+          compiler.source += `yield* ${walk}(${tensor}.toJSON(), 0);`;
+          compiler.source += `delete thread._lxTensorPath;`;
+          compiler.source += `delete thread._lxTensorValue;`;
         },
         map: (node, compiler, imports) => {
           let source = '';
