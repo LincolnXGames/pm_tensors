@@ -47,10 +47,7 @@
   const vm = Scratch.vm
   const runtime = vm.runtime
 
-  const u = x =>
-    x instanceof jwArray.Type ? u(x.toJSON()) :
-    Array.isArray(x) ? x.map(u) :
-    x;
+  const u = x => x instanceof jwArray.Type ? x.array : x;
 
   let TensorType, lxTensor, jwArray;
   
@@ -90,8 +87,20 @@
         }
 
         static parseLength(x) {
-          if (u(x) instanceof Array) return u(x).map(TensorType.parseLength);
-          return Math.min(Math.max(Math.floor(x), 0), arrayLimit) || 0;
+          const v = u(x);
+
+          if (v == null) return 0;
+
+          if (Array.isArray(v)) {
+            const out = new Array(v.length);
+            for (let i = 0; i < v.length; i++) {
+              out[i] = TensorType.parseLength(v[i]);
+            }
+            return out;
+          }
+
+          const n = Number(v);
+          return Math.min(Math.max(Math.floor(n || 0), 0), arrayLimit);
         }
 
         jwArrayHandler() {
@@ -300,16 +309,19 @@
         static shape(a) {
           const s = [];
           a = u(a);
-          for (; Array.isArray(a); a = u(a[0])) {
+          while (Array.isArray(a)) {
             const l = a.length;
             if (!l) return [0];
             s.push(l);
-            const f = u(a[0]);
-            const t = Array.isArray(f);
+            const first = u(a[0]);
+            const isArr = Array.isArray(first);
             for (let i = 1; i < l; i++) {
               const x = u(a[i]);
-              if (Array.isArray(x) !== t || (t && x.length !== f.length)) return [];
+              if (Array.isArray(x) !== isArr || (isArr && x.length !== first.length)) {
+                return [];
+              }
             }
+            a = first;
           }
           return s;
         }
@@ -326,7 +338,7 @@
         }
 
         static isEmpty(t) {
-          return !t instanceof jwArray.Type || t?.array?.length === 0;
+          return !(t instanceof jwArray.Type) || t?.array?.length === 0;
         }
 
         fillTensor(val) {
@@ -352,8 +364,8 @@
         }
 
         reshape(shape) {
-          if (TensorType.isEmpty(this) || this.shape == shape) return this;
-          shape = u(shape);
+          if (TensorType.isEmpty(this) || this.shape === shape) return this;
+
           if (!Array.isArray(shape) || shape.some(n => n <= 0 || n !== n)) {
             this.array = [];
             this._shape = [];
@@ -365,24 +377,25 @@
           const flat = [];
           const f = (x) => {
             x = u(x);
+
             if (Array.isArray(x)) {
               for (let i = 0; i < x.length && flat.length < size; i++) {
                 f(x[i]);
               }
-            } else if (flat.length < size) { // trunc
+            } else if (flat.length < size) {
               flat.push(x);
             }
           };
-          f(this);
 
-          while (flat.length < size) flat.push(null); // extend
+          f(this.array);
+
+          while (flat.length < size) flat.push(null);
 
           let idx = 0;
 
           const build = (d) => {
             const len = shape[d];
 
-            // leaf
             if (d === shape.length - 1) {
               const arr = new Array(len);
               for (let i = 0; i < len; i++) arr[i] = flat[idx++];
@@ -407,38 +420,36 @@
 
         setPath(path, value) {
           if (TensorType.isEmpty(this)) return this;
-          path = u(path);
+
           let node = this.array;
-          
+
           for (let d = 0; d < path.length - 1; d++) {
-              if (node instanceof TensorType) node = node.array;
-              
-              if (!Array.isArray(node)) return this;
-              
-              const i = Number(path[d]) - 1;
-              if (i < 0 || i >= node.length) return this;
-              
-              node = node[i];
+            if (node instanceof TensorType) node = node.array;
+            if (!Array.isArray(node)) return this;
+
+            const i = Number(path[d]) - 1;
+            if (i < 0 || i >= node.length) return this;
+
+            node = node[i];
           }
-          
+
           if (node instanceof TensorType) node = node.array;
           if (!Array.isArray(node)) return this;
-          
+
           const i = Number(path[path.length - 1]) - 1;
           if (i < 0 || i >= node.length) return this;
-          
+
           node[i] = value;
           return this;
         }
 
         getPath(path) {
           if (TensorType.isEmpty(this)) return undefined;
-          path = u(path);
+
           let node = this.array;
 
           for (let d = 0; d < path.length; d++) {
             if (node instanceof TensorType) node = node.array;
-
             if (!Array.isArray(node)) return undefined;
 
             const i = Number(path[d]) - 1;
@@ -452,16 +463,20 @@
 
         findPath(target) {
           if (TensorType.isEmpty(this)) return this;
-          target = u(target);
 
           const eq = (a, b) => {
-            a = u(a); b = u(b);
+            if (a instanceof TensorType) a = a.array;
+            if (b instanceof TensorType) b = b.array;
+
             if (Array.isArray(a) !== Array.isArray(b)) return false;
             if (!Array.isArray(a)) return a === b;
+
             if (a.length !== b.length) return false;
+
             for (let i = 0; i < a.length; i++) {
               if (!eq(a[i], b[i])) return false;
             }
+
             return true;
           };
 
@@ -469,14 +484,15 @@
 
           while (stack.length) {
             let [node, path] = stack.pop();
+
             if (node instanceof TensorType) node = node.array;
 
-            node = u(node);
-
-            if (eq(node, target)) return new jwArray.Type(path.map(i => i + 1), true);
+            if (eq(node, target)) {
+              return new jwArray.Type(path.map(i => i + 1), true);
+            }
 
             if (Array.isArray(node)) {
-              for (let i = node.length; i--; ) {
+              for (let i = node.length; i--;) {
                 stack.push([node[i], [...path, i]]);
               }
             }
@@ -487,14 +503,27 @@
 
         flatHas(val) {
           if (TensorType.isEmpty(this)) return false;
-          val = u(val);
-          return u(this.flat(Infinity)).includes(val);
+
+          const flat = [];
+          const f = (x) => {
+            if (x instanceof TensorType) x = x.array;
+
+            if (Array.isArray(x)) {
+              for (let i = 0; i < x.length; i++) f(x[i]);
+            } else {
+              flat.push(x);
+            }
+          };
+
+          f(this.array);
+
+          return flat.includes(val);
         }
 
         transpose() {
           if (TensorType.isEmpty(this)) return this;
 
-          const t = u(this);
+          const t = this.array;
           const shape = this.shape;
 
           if (!Array.isArray(shape) || shape.length < 2) return this;
@@ -528,10 +557,63 @@
             return out;
           };
 
-          const result = build(0);
-
-          this.array = TensorType.toTensor(result).array;
+          this.array = TensorType.toTensor(build(0)).array;
           this._shape = newShape;
+
+          return this;
+        }
+
+        broadcast(shape) {
+          if (TensorType.isEmpty(this)) return this;
+
+          if (!Array.isArray(shape) || shape.some(n => n <= 0 || n !== n)) {
+            this.array = [];
+            this._shape = [];
+            return this;
+          }
+
+          const input = this.array;
+          const inShape = this.shape;
+
+          const maxRank = Math.max(inShape.length, shape.length);
+
+          const paddedIn = Array(maxRank).fill(1);
+          const paddedOut = Array(maxRank).fill(1);
+
+          for (let i = 0; i < maxRank; i++) {
+            paddedIn[i + maxRank - inShape.length] = inShape[i] ?? 1;
+            paddedOut[i + maxRank - shape.length] = shape[i] ?? 1;
+          }
+
+          for (let i = 0; i < maxRank; i++) {
+            if (paddedIn[i] !== paddedOut[i] && paddedIn[i] !== 1) {
+              this.array = [];
+              this._shape = [];
+              return this;
+            }
+          }
+
+          const build = (data, dim) => {
+            if (dim === maxRank) return data;
+
+            if (data instanceof TensorType) data = data.array;
+
+            const size = paddedOut[dim];
+            const inSize = paddedIn[dim];
+            const isArray = Array.isArray(data);
+
+            const out = new Array(size);
+
+            for (let i = 0; i < size; i++) {
+              const src = isArray ? data[inSize === 1 ? 0 : i] : data;
+              out[i] = build(src, dim + 1);
+            }
+
+            return out;
+          };
+
+          this.array = TensorType.toTensor(build(input, 0)).array;
+          this._shape = shape;
 
           return this;
         }
@@ -1127,7 +1209,6 @@
           source += `yield* ${walk}(${arr}[${i}], ${depth} + 1);`;
           source += `} else {`;
 
-          // expose values
           source += `thread._lxTensorValue = ${arr}[${i}];`;
           source += `thread._lxTensorAcc = ${acc};`;
 
